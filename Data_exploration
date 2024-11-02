@@ -1,0 +1,122 @@
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+# Set the working directory
+os.chdir('/mmfs1/home/ndsu.guest63893/teamdakotas')
+
+# Verify that the working directory is set correctly
+print("Current Working Directory:", os.getcwd())
+
+# Load the CSV file
+data = pd.read_csv('combined_train_set.csv')
+
+# Display the first few rows of the dataset
+print(data.head())
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Check if necessary columns are present
+if 'YEAR_x' in data.columns and 'LOC' in data.columns and 'YLD_BE' in data.columns:
+    # Identify the top 10 locations based on frequency in the dataset
+    top_locations = data['LOC'].value_counts().head(10).index.tolist()
+    
+    # Filter the data to include only the selected locations
+    data_filtered = data[data['LOC'].isin(top_locations)]
+    
+    # Get unique years
+    years = sorted(data_filtered['YEAR_x'].unique())
+    
+    # Set up Seaborn style for the plot without grid lines
+    sns.set(style="white")
+
+    # Define the consistent y-axis range
+    y_axis_min, y_axis_max = 100, 300
+
+    # Create a boxplot for each year
+    for year in years:
+        # Filter data for the current year
+        year_data = data_filtered[data_filtered['YEAR_x'] == year]
+        
+        # Get the number of unique locations
+        unique_locs = year_data['LOC'].nunique()
+        
+        # Create a blue-to-red gradient color palette
+        palette = sns.color_palette("coolwarm", n_colors=unique_locs)
+        
+        # Initialize the figure for each year's boxplot
+        plt.figure(figsize=(12, 8))
+        
+        # Use Seaborn's boxplot with blue-to-red gradient, ensuring consistent location order
+        sns.boxplot(
+            x='LOC', y='YLD_BE', data=year_data, 
+            palette=palette, showfliers=False,  # Remove outliers to focus on distribution
+            order=top_locations,  # Ensure consistent order of locations
+            linewidth=1.5, width=0.6
+        )
+        
+        # Set y-axis limits to the specified range
+        plt.ylim(y_axis_min, y_axis_max)
+        
+        # Customize plot appearance
+        plt.title(f'Yield Distribution by Location for Year {year}', fontsize=16, weight='bold')
+        plt.xlabel('Location', fontsize=14)
+        plt.ylabel('Yield (YLD_BE)', fontsize=14)
+        
+        # Rotate x-axis labels and remove spines for a cleaner look
+        plt.xticks(rotation=0, ha='right', fontsize=12)
+        sns.despine()  # Remove top and right spines
+
+        # Display the boxplot
+        plt.show()
+else:
+    print("The dataset does not contain 'YEAR_x', 'LOC', and 'YLD_BE' columns.")
+
+#Heatmaps
+
+# Set output directory for saving heatmaps
+output_dir = '/mmfs1/home/ndsu.guest63893/teamdakotas/results'
+os.makedirs(output_dir, exist_ok=True)  # Create the directory if it doesn't exist
+os.chdir(output_dir)  # Change to the output directory
+
+# Check if the necessary columns are present
+if 'YEAR_x' in data.columns and 'LOC' in data.columns and 'YLD_BE' in data.columns:
+    # Identify the top 10 locations based on frequency in the dataset
+    top_locations = data['LOC'].value_counts().head(10).index.tolist()
+    
+    # Filter the data to include only the selected locations
+    data_filtered = data[data['LOC'].isin(top_locations)]
+    
+    # Get unique years
+    years = sorted(data_filtered['YEAR_x'].unique())
+    
+    # Create a heatmap for each year using raw yield values
+    for year in years:
+        # Filter data for the current year
+        year_data = data_filtered[data_filtered['YEAR_x'] == year]
+        
+        # Create a pivot table with raw yield values, swapping axes
+        pivot_table = year_data.pivot_table(index='LINE_UNIQUE_ID', columns='LOC', values='YLD_BE')
+        
+        # Create heatmap
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(pivot_table, cmap="coolwarm", cbar_kws={'label': 'Yield (YLD_BE)'})
+        
+        # Enhance plot appearance
+        plt.title(f'Yield Heatmap by Line and Location for Year {year}')
+        plt.xlabel('Location')
+        plt.ylabel('Line Unique ID')
+        
+        # Remove y-axis tick labels (optional for clarity)
+        plt.yticks([])
+
+        # Save the heatmap as an image file
+        file_path = f'Yield_Heatmap_Raw_Year_{year}_Swapped_Axes.png'
+        plt.savefig(file_path, dpi=1200, bbox_inches='tight')  # Save with high resolution
+        
+        # Show the heatmap for the current year
+        plt.show()
+        
+        print(f"Saved raw yield heatmap for year {year} to {file_path}")
+else:
+    print("The dataset does not contain 'YEAR_x', 'LOC', and 'YLD_BE' columns.")
