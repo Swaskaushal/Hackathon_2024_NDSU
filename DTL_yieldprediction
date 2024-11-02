@@ -1,0 +1,127 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
+import tensorflow as tf
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Dense
+
+# Set the working directory
+os.chdir('/mmfs1/home/ndsu.guest63893/teamdakotas')
+print("Current Working Directory:", os.getcwd())
+
+# Define DNN model function for pre-training
+def build_dnn_model(input_shape):
+    model = Sequential([
+        Dense(128, activation='relu', input_shape=(input_shape,)),
+        Dense(64, activation='relu'),
+        Dense(32, activation='relu'),
+        Dense(1)  # Output layer for regression
+    ])
+    model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
+    return model
+
+# Initialize and scale the training data
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)  # Assuming X_train is your training data features
+
+# Step 1: Pre-train the DNN model on the original training data
+input_shape = X_train_scaled.shape[1]
+pretrained_model = build_dnn_model(input_shape)
+
+# Train the model for a full 100 epochs without early stopping
+pretrained_model.fit(
+    X_train_scaled, y_train,  # Assuming y_train is your target
+    epochs=100,
+    batch_size=32,
+    validation_split=0.2,
+    verbose=2
+)
+
+# Save the pre-trained model
+pretrained_model.save('pretrained_model.h5')
+print("Pre-trained model saved.")
+
+# Step 2: Load and prepare the new dataset
+new_data_path = 'final_test.csv'
+new_data = pd.read_csv(new_data_path)
+
+# Define the selected features for the new data
+selected_features_no_yield = [feature for feature in selected_features if feature != "YLD_BE"]
+new_data_filtered = new_data[selected_features_no_yield]
+
+# Fill missing values in the new data
+if new_data_filtered.isnull().values.any():
+    print("Warning: The dataset contains missing values. Filling missing values with column means.")
+    new_data_filtered = new_data_filtered.fillna(new_data_filtered.mean())
+
+# Standardize the new data
+new_data_scaled = scaler.transform(new_data_filtered)
+
+# Split new data for fine-tuning and prediction
+new_data_train, new_data_test = train_test_split(new_data, test_size=0.8, random_state=1)
+X_new_train = scaler.transform(new_data_train[selected_features_no_yield])
+y_new_train = new_data_train['YLD_BE']
+X_new_test = scaler.transform(new_data_test[selected_features_no_yield])
+y_new_test = new_data_test['YLD_BE']
+
+# Step 3: Fine-tune the pre-trained model on 20% of the new data
+# Load the pre-trained model and retrain on the new data subset
+fine_tuned_model = load_model('pretrained_model.h5', custom_objects={'mse': 'mean_squared_error'})
+
+# Fine-tune for a full 50 epochs without early stopping
+fine_tuned_model.fit(
+    X_new_train, y_new_train,
+    epochs=50,
+    batch_size=32,
+    validation_split=0.2,
+    verbose=2
+)
+
+# Step 4: Evaluate the fine-tuned model on the remaining 80% of the new data
+y_pred = fine_tuned_model.predict(X_new_test).flatten()
+
+# Calculate performance metrics
+r2 = r2_score(y_new_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_new_test, y_pred))
+rmse_percentage = (rmse / np.mean(y_new_test)) * 100
+
+print("Evaluation on 80% of the new data:")
+print("R-squared (R²):", r2)
+print("Root Mean Squared Error (RMSE):", rmse)
+print("RMSE Percentage (RMSE%):", rmse_percentage)
+
+# Step 5: Save predictions
+new_data_test['Predicted_YLD_BE'] = y_pred
+output_path = 'final_test_with_fine_tuned_predictions.csv'
+new_data_test.to_csv(output_path, index=False)
+print(f"Predictions have been saved to {output_path}")
+
+# Step 6: Plot Predicted vs Observed values for evaluation
+plt.figure(figsize=(10, 6))
+plt.scatter(y_new_test, y_pred, alpha=0.6, color="b", label="Predicted vs Observed")
+plt.plot([min(y_new_test), max(y_new_test)], [min(y_new_test), max(y_new_test)], 'r--', lw=2, label="Perfect Prediction")
+
+# Customize plot appearance
+plt.title("Predicted vs Observed Yield (YLD_BE) - Final Test Set (Fine-Tuned)")
+plt.xlabel("Observed Yield (YLD_BE)")
+plt.ylabel("Predicted Yield (YLD_BE)")
+plt.legend()
+plt.grid(True)
+
+# Add metrics as text on the plot
+plt.text(
+    0.05, 0.95,
+    f"$R^2$: {r2:.2f}\nRMSE: {rmse:.2f}\nRMSE%: {rmse_percentage:.2f}%",
+    ha='left', va='top', transform=plt.gca().transAxes,
+    fontsize=12, bbox=dict(facecolor='white', alpha=0.7)
+)
+
+# Show and save plot
+plt.savefig('Predicted_vs_Observed_Final_Test_Set_Fine_Tuned_DNN.png', dpi=300, bbox_inches='tight')
+plt.show()
