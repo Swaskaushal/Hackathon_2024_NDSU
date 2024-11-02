@@ -1,0 +1,124 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.callbacks import EarlyStopping
+
+# Set the working directory
+os.chdir('/mmfs1/home/ndsu.guest63893/teamdakotas')
+print("Current Working Directory:", os.getcwd())
+
+# Load your training data
+# Assume X_train and y_train are pre-defined with your selected features
+# Define selected features (without 'YLD_BE') and load/prepare data accordingly
+
+# Define DNN model function
+def build_dnn_model(input_shape):
+    model = Sequential([
+        Dense(1028, activation='relu', input_shape=(input_shape,)),
+        Dense(512, activation='relu'),
+        Dense(512, activation='relu'),
+        Dense(64, activation='relu'),
+        Dense(64, activation='relu'),
+        Dense(32, activation='relu'),
+        Dense(1)  # Output layer for regression
+    ])
+    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    return model
+
+# Initialize scaler and scale training data
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)  # Assuming X_train is your training data features
+
+# Build and train the DNN model
+input_shape = X_train_scaled.shape[1]
+dnn_model = build_dnn_model(input_shape)
+
+# Early stopping to prevent overfitting
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+
+# Fit the model
+history = dnn_model.fit(
+    X_train_scaled, y_train,  # Assuming y_train is your target
+    epochs=500, 
+    batch_size=32,
+    validation_split=0.2,
+    callbacks=[early_stopping],
+    verbose=2
+)
+
+# Load the new dataset for prediction
+new_data_path = 'final_test.csv'
+new_data = pd.read_csv(new_data_path)
+
+# Define the selected features (assuming they are already known)
+# Example: selected_features = ["feature1", "feature2", ..., "featureN"]
+selected_features_no_yield = [feature for feature in selected_features if feature != "YLD_BE"]
+
+# Ensure the dataset has the selected features
+new_data_filtered = new_data[selected_features_no_yield]
+
+# Check for missing values in the selected features and handle if necessary
+if new_data_filtered.isnull().values.any():
+    print("Warning: The dataset contains missing values. Filling missing values with column means.")
+    new_data_filtered = new_data_filtered.fillna(new_data_filtered.mean())
+
+# Scale the data using the same scaler used for training
+new_data_scaled = scaler.transform(new_data_filtered)
+
+# Make predictions using the trained DNN model
+predictions = dnn_model.predict(new_data_scaled).flatten()  # Flatten to convert to 1D array
+
+# Add predictions to the new dataset and export as a CSV
+new_data['Predicted_YLD_BE'] = predictions
+output_path = 'final_test_with_predictions_dnn.csv'
+new_data.to_csv(output_path, index=False)
+
+print(f"Predictions have been saved to {output_path}")
+
+# Optional Evaluation on New Data if YLD_BE is available in `final_test.csv`
+if 'YLD_BE' in new_data.columns:
+    y_true = new_data['YLD_BE']
+    y_pred = predictions
+    
+    # Calculate R-squared, RMSE, and RMSE percentage
+    r2 = r2_score(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    rmse_percentage = (rmse / np.mean(y_true)) * 100
+    
+    # Print performance metrics
+    print("Evaluation on New Data:")
+    print("R-squared (R²):", r2)
+    print("Root Mean Squared Error (RMSE):", rmse)
+    print("RMSE Percentage (RMSE%):", rmse_percentage)
+    
+    # Plot Predicted vs Observed values
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_true, y_pred, alpha=0.6, color="b", label="Predicted vs Observed")
+    plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--', lw=2, label="Perfect Prediction")
+
+    # Customize plot appearance
+    plt.title("Predicted vs Observed Yield (YLD_BE) - Final Test Set")
+    plt.xlabel("Observed Yield (YLD_BE)")
+    plt.ylabel("Predicted Yield (YLD_BE)")
+    plt.legend()
+    plt.grid(True)
+
+    # Add metrics as text on the plot
+    plt.text(
+        0.05, 0.95,
+        f"$R^2$: {r2:.2f}\nRMSE: {rmse:.2f}\nRMSE%: {rmse_percentage:.2f}%",
+        ha='left', va='top', transform=plt.gca().transAxes,
+        fontsize=12, bbox=dict(facecolor='white', alpha=0.7)
+    )
+    
+    # Show and save plot
+    plt.savefig('Predicted_vs_Observed_Final_Test_Set_DNN.png', dpi=300, bbox_inches='tight')
+    plt.show()
