@@ -1,0 +1,68 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+import folium
+train_set=pd.read_csv('teamdakotas/final_train.csv')
+test_set=pd.read_csv('teamdakotas/final_test.csv')
+train_set.columns
+
+
+# Identify non-numeric columns
+non_numeric_cols = train_set.select_dtypes(exclude=['number']).columns
+print(f'Non-Numeric Columns: {non_numeric_cols}')
+
+# Drop non-numeric columns from features
+X = train_set.drop(non_numeric_cols, axis=1).drop(['YLD_BE', 'TWT', 'MST'], axis=1)
+y_yield = train_set['YLD_BE']
+y_twt = train_set['TWT']
+y_mst = train_set['MST']
+# Convert specific columns to numeric, handling errors
+X = X.apply(pd.to_numeric, errors='coerce')
+
+# Handle any remaining NaNs (e.g., fill with mean)
+X.fillna(X.mean(), inplace=True)
+
+# Verify all features are numeric
+print(X.dtypes)
+from sklearn.ensemble import RandomForestRegressor
+
+# Train the model for Yield
+model_yield = RandomForestRegressor(n_estimators=100, random_state=42)
+model_yield.fit(X, y_yield)
+
+# Train the model for Total Weight
+model_twt = RandomForestRegressor(n_estimators=100, random_state=42)
+model_twt.fit(X, y_twt)
+
+# Train the model for Moisture Content
+model_mst = RandomForestRegressor(n_estimators=100, random_state=42)
+model_mst.fit(X, y_mst)
+
+# Get feature importances
+feature_importance_yield = model_yield.feature_importances_
+feature_importance_twt = model_twt.feature_importances_
+feature_importance_mst = model_mst.feature_importances_
+
+# Combine feature importances
+combined_importance = (feature_importance_yield + feature_importance_twt - feature_importance_mst) / 3
+
+# Create a DataFrame for better visualization
+features = X.columns
+importance_df = pd.DataFrame({'Feature': features, 'Importance': combined_importance})
+importance_df = importance_df.sort_values(by='Importance', ascending=False)
+
+print(importance_df.head(10))  # Display the top 10 features
+# Create a DataFrame for better visualization
+# Combine feature importances
+combined_importance = feature_importance_yield
+features = X.columns
+importance_df = pd.DataFrame({'Feature': features, 'Importance': combined_importance})
+importance_df = importance_df.sort_values(by='Importance', ascending=False)
+
+print(importance_df.head(20))  # Display the top 10 features
+top_feature_names = importance_df['Feature'].tolist()
+
+
+
